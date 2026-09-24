@@ -61,7 +61,10 @@ def _calc_atr_from_pd(high, low, close, time_period=14):
         # shift(1)构成昨天收盘价格序列
         pre_close = close.shift(1).values
     else:
-        from scipy.ndimage.interpolation import shift
+        try:
+            from scipy.ndimage import shift
+        except ImportError:
+            from scipy.ndimage.interpolation import shift
         # 也可以暂时转换为pd.Series进行shift
         pre_close = shift(close, 1)
     pre_close[0] = pre_close[1]

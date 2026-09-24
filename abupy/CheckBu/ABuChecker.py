@@ -7,8 +7,12 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import division
 
-from toolz import valmap
 from functools import wraps
+
+
+def valmap(func, mapping):
+    """toolz.valmap 的本地替代，避免导入时依赖 toolz。"""
+    return {key: func(value) for key, value in mapping.items()}
 
 from ..CheckBu.ABuFuncUtil import *
 from ..CheckBu.ABuChecks import *

@@ -4,6 +4,10 @@
 logging.log
 p.sh
 *.pyc
+__pycache__/
 tmp
 test.py
 /abupy/RomDataBu/df_kl.h5
+.venv/
+abupy/RomDataBu/csv/
+abupy/RomDataBu/__MACOSX/

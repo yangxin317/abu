@@ -5,7 +5,10 @@ from __future__ import print_function
 from __future__ import absolute_import
 from __future__ import division
 import operator
-from collections import Mapping
+try:
+    from collections.abc import Mapping
+except ImportError:
+    from collections import Mapping
 from functools import reduce
 from ..CoreBu.ABuFixes import partial
 from itertools import product, chain

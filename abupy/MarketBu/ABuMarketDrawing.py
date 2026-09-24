@@ -9,7 +9,10 @@ from __future__ import absolute_import
 import itertools
 import logging
 import os
-from collections import Iterable
+try:
+    from collections.abc import Iterable
+except ImportError:
+    from collections import Iterable
 from math import pi
 
 import bokeh.plotting as bp

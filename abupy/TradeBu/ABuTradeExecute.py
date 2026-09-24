@@ -74,7 +74,8 @@ def make_orders_pd(orders, kl_pd):
 
     # 把除字符串类型外的所有进行列类型进行显示转换，因为支持py3
     ret_orders_pd['sell_price'] = ret_orders_pd['sell_price'].astype(float)
-    ret_orders_pd['sell_date'] = ret_orders_pd['sell_date'].fillna(0).astype(int)
+    # object 列上 fillna 再 astype 会触发 pandas 的 downcast 警告，并在后续版本改变结果
+    ret_orders_pd['sell_date'] = pd.to_numeric(ret_orders_pd['sell_date'], errors='coerce').fillna(0).astype(int)
 
     ret_orders_pd['buy_price'] = ret_orders_pd['buy_price'].astype(float)
     ret_orders_pd['buy_date'] = ret_orders_pd['buy_date'].astype(int)

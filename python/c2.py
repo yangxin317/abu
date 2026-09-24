@@ -388,7 +388,10 @@ def sample_231():
     print('trade_days:', trade_days)
     print('trade_days对象长度为: {}'.format(len(trade_days)))
 
-    from collections import Iterable
+    try:
+        from collections.abc import Iterable
+    except ImportError:
+        from collections import Iterable
     # 如果是trade_days是可迭代对象，依次打印出
     if isinstance(trade_days, Iterable):
         for day in trade_days:

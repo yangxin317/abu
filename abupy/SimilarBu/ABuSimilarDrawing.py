@@ -55,7 +55,7 @@ def draw_show_close(sorted_ret, target_count, show_cnt):
                 # 再次确认时间范围
                 close_array = close_array[:int(target_count)]
 
-            cs_np = np.array(close_array, dtype=np.float)
+            cs_np = np.array(close_array, dtype=float)
             # 使用ABuScalerUtil.scaler_std将序列进行标准化在一个数量值范围内可视化
             plt.plot(ABuScalerUtil.scaler_std(cs_np), cs_color, label=sorted_ret[x][0])
         plt.legend(loc='best', bbox_to_anchor=(1.05, 1), borderaxespad=0.)

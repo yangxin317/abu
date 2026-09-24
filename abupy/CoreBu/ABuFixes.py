@@ -7,9 +7,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import functools
 import numbers
 import sys
+
+try:
+    import collections.abc as _collections_abc
+except ImportError:
+    _collections_abc = None
+
+# 3.10 起 collections.Iterable 等名字被删掉。3.9 上探测这些名字本身会报警，所以只在 3.10+ 补回。
+if sys.version_info >= (3, 10) and _collections_abc is not None:
+    for _abc_name in ('Iterable', 'Iterator', 'Mapping', 'MutableMapping', 'Sequence', 'Callable'):
+        if not hasattr(collections, _abc_name) and hasattr(_collections_abc, _abc_name):
+            setattr(collections, _abc_name, getattr(_collections_abc, _abc_name))
 
 import matplotlib
 import numpy as np
@@ -272,12 +284,12 @@ if skl_ver_big:
                     yield test_mask
 
             def _empty_mask(self):
-                return np.zeros(self.n, dtype=np.bool)
+                return np.zeros(self.n, dtype=bool)
 
             def _iter_test_indices(self):
                 n = self.n
                 n_folds = self.n_folds
-                fold_sizes = (n // n_folds) * np.ones(n_folds, dtype=np.int)
+                fold_sizes = (n // n_folds) * np.ones(n_folds, dtype=int)
                 fold_sizes[:n % n_folds] += 1
                 current = 0
                 for fold_size in fold_sizes:
@@ -384,3 +396,105 @@ try:
 except:
     # noinspection PyUnresolvedReferences
     from scipy.stats import rankdata
+
+
+class _AbuIXIndexer(object):
+    """pandas.DataFrame.ix / Series.ix 的最小替代：先按标签，失败再按位置。"""
+
+    def __init__(self, obj):
+        self._obj = obj
+
+    def __getitem__(self, key):
+        try:
+            return self._obj.loc[key]
+        except (KeyError, TypeError, ValueError, IndexError):
+            return self._obj.iloc[key]
+
+    def __setitem__(self, key, value):
+        try:
+            self._obj.loc[key] = value
+        except (KeyError, TypeError, ValueError, IndexError):
+            self._obj.iloc[key] = value
+
+
+def _abu_ix(self):
+    return _AbuIXIndexer(self)
+
+
+def _abu_as_matrix(self, columns=None):
+    if columns is None:
+        return np.asarray(self.to_numpy())
+    return np.asarray(self.loc[:, list(columns)].to_numpy())
+
+
+def _abu_frame_append(self, other, ignore_index=False, verify_integrity=False, sort=False):
+    if other is None:
+        return self.copy()
+    frames = [self]
+    if isinstance(other, (list, tuple)):
+        frames.extend(other)
+    else:
+        frames.append(other)
+    return pd.concat(frames, ignore_index=ignore_index, sort=sort)
+
+
+def _abu_series_append(self, to_append, ignore_index=False, verify_integrity=False):
+    pieces = [self]
+    if isinstance(to_append, (list, tuple)):
+        pieces.extend(to_append)
+    else:
+        pieces.append(to_append)
+    return pd.concat(pieces, ignore_index=ignore_index)
+
+
+def _wrap_fillna(cls):
+    original = cls.fillna
+    if getattr(original, '_abu_fillna', False):
+        return
+
+    def fillna(self, value=None, method=None, axis=None, inplace=False, limit=None, downcast=None):
+        if method is not None:
+            how = {'pad': 'ffill', 'ffill': 'ffill', 'backfill': 'bfill', 'bfill': 'bfill'}.get(method, method)
+            kwargs = {}
+            if axis is not None:
+                kwargs['axis'] = axis
+            if inplace:
+                kwargs['inplace'] = True
+            if limit is not None:
+                kwargs['limit'] = limit
+            return getattr(self, how)(**kwargs)
+        kwargs = {}
+        if axis is not None:
+            kwargs['axis'] = axis
+        if inplace:
+            kwargs['inplace'] = True
+        if limit is not None:
+            kwargs['limit'] = limit
+        return original(self, value=value, **kwargs)
+
+    fillna._abu_fillna = True
+    cls.fillna = fillna
+
+
+def _install_pandas_compat():
+    """补回 pandas 1.x 已删除、回测主路径仍在调用的接口。"""
+    if getattr(pd, '_abu_pandas_compat', False):
+        return
+    if not hasattr(pd.DataFrame, 'append'):
+        pd.DataFrame.append = _abu_frame_append
+    if not hasattr(pd.Series, 'append'):
+        pd.Series.append = _abu_series_append
+    if not hasattr(pd.DataFrame, 'as_matrix'):
+        pd.DataFrame.as_matrix = _abu_as_matrix
+    if not hasattr(pd.Series, 'as_matrix'):
+        pd.Series.as_matrix = _abu_as_matrix
+    if not hasattr(pd.DataFrame, 'ix'):
+        pd.DataFrame.ix = property(_abu_ix)
+    if not hasattr(pd.Series, 'ix'):
+        pd.Series.ix = property(_abu_ix)
+    _wrap_fillna(pd.DataFrame)
+    _wrap_fillna(pd.Series)
+    pd._abu_pandas_compat = True
+
+
+_install_pandas_compat()

@@ -8,7 +8,6 @@ from __future__ import print_function
 from __future__ import division
 
 import glob
-import imghdr
 import os
 
 import PIL.Image
@@ -18,6 +17,28 @@ from PIL import ImageFile
 from ..CoreBu.ABuFixes import map
 
 from ..UtilBu import ABuFileUtil
+
+
+def _img_what(path):
+    """imghdr.what 的替代。Python 3.13 起标准库移除了 imghdr。"""
+    try:
+        with open(path, 'rb') as image_file:
+            head = image_file.read(32)
+    except OSError:
+        return None
+    if head.startswith(b'\xff\xd8\xff'):
+        return 'jpeg'
+    if head.startswith(b'\x89PNG\r\n\x1a\n'):
+        return 'png'
+    if head.startswith((b'GIF87a', b'GIF89a')):
+        return 'gif'
+    if head.startswith(b'BM'):
+        return 'bmp'
+    if head.startswith((b'II*\x00', b'MM\x00*')):
+        return 'tiff'
+    if len(head) >= 12 and head[:4] == b'RIFF' and head[8:12] == b'WEBP':
+        return 'webp'
+    return None
 
 __all__ = ['std_img_from_root_dir',
            'covert_to_jpeg',
@@ -106,8 +127,8 @@ def change_to_real_type(img_list):
             # 过滤实际不存在的文件
             continue
 
-        # 使用imghdr识别图像真实类型
-        real_type = imghdr.what(img)
+        # 用文件头识别图像真实类型
+        real_type = _img_what(img)
         # 将img_list有的类型做记录，add到集合中
         record_type.add(real_type)
         if real_type is None:

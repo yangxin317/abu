@@ -1,0 +1,18 @@
+# Python 3.11+。已在 Python 3.14.3 上跑通沙盒回测和实时行情。
+numpy==2.5.3
+pandas==3.0.6
+scipy==1.18.1
+scikit-learn==1.9.1
+matplotlib==3.11.2
+seaborn==0.13.2
+statsmodels==0.15.0
+requests==2.34.2
+psutil==7.2.2
+jupyterlab==4.6.4
+notebook==7.6.3
+ipywidgets==8.1.9
+bokeh==3.10.0
+streamlit==1.64.0
+akshare==1.18.97
+yfinance==1.7.0
+curl_cffi==0.16.3

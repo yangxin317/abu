@@ -8,7 +8,10 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-from collections import Iterable
+try:
+    from collections.abc import Iterable
+except ImportError:
+    from collections import Iterable
 
 import pandas as pd
 
@@ -45,12 +48,13 @@ def _benchmark(df, benchmark, symbol):
     :param symbol: Symbol对象
     :return: 使用基准的时间范围切割返回的金融时间序列
     """
-    if len(df.index & benchmark.kl_pd.index) <= 0:
+    # pandas 2 起 Index.__and__ 不再表示交集
+    if len(df.index.intersection(benchmark.kl_pd.index)) <= 0:
         # 如果基准benchmark时间范围和输入的df没有交集，直接返回None
         return None
 
-    # 两个金融时间序列通过loc寻找交集
-    kl_pd = df.loc[benchmark.kl_pd.index]
+    # 按基准日期对齐。缺的交易日留 NaN，后面再填充
+    kl_pd = df.reindex(benchmark.kl_pd.index)
     # nan的date个数即为不相交的个数
     nan_cnt = kl_pd['date'].isnull().value_counts()
     # 两个金融序列是否相同的结束日期
@@ -77,26 +81,16 @@ def _benchmark(df, benchmark, symbol):
         return None
 
     # 来到这里说明没有放弃，那么就填充nan
-    # 首先nan的交易量是0
-    kl_pd.volume.fillna(value=0, inplace=True)
-    # nan的p_change是0
-    kl_pd.p_change.fillna(value=0, inplace=True)
-    # 先把close填充了，然后用close填充其它的
-    kl_pd.close.fillna(method='pad', inplace=True)
-    kl_pd.close.fillna(method='bfill', inplace=True)
-    # 用close填充open
-    kl_pd.open.fillna(value=kl_pd.close, inplace=True)
-    # 用close填充high
-    kl_pd.high.fillna(value=kl_pd.close, inplace=True)
-    # 用close填充low
-    kl_pd.low.fillna(value=kl_pd.close, inplace=True)
-    # 用close填充pre_close
-    kl_pd.pre_close.fillna(value=kl_pd.close, inplace=True)
-
-    # 细节nan处理完成后，把剩下的nan都填充了
-    kl_pd = kl_pd.fillna(method='pad')
-    # bfill再来一遍只是为了填充最前面的nan
-    kl_pd.fillna(method='bfill', inplace=True)
+    # 写回列，避免对切片 inplace 在 pandas 2/3 上不生效
+    kl_pd = kl_pd.copy()
+    kl_pd['volume'] = kl_pd['volume'].fillna(0)
+    kl_pd['p_change'] = kl_pd['p_change'].fillna(0)
+    kl_pd['close'] = kl_pd['close'].ffill().bfill()
+    kl_pd['open'] = kl_pd['open'].fillna(kl_pd['close'])
+    kl_pd['high'] = kl_pd['high'].fillna(kl_pd['close'])
+    kl_pd['low'] = kl_pd['low'].fillna(kl_pd['close'])
+    kl_pd['pre_close'] = kl_pd['pre_close'].fillna(kl_pd['close'])
+    kl_pd = kl_pd.ffill().bfill()
 
     # pad了数据所以，交易日期date的值需要根据time index重新来一遍
     kl_pd['date'] = [int(ts.date().strftime("%Y%m%d")) for ts in kl_pd.index]
@@ -242,6 +236,42 @@ def kl_df_dict_parallel(symbols, data_mode=ABuEnv.EMarketDataSplitMode.E_DATA_SP
     return df_dicts
 
 
+class AbuKLinePanel(object):
+    """pandas.Panel 的替代。items 是 symbol，major 是日期，minor 是行情列。"""
+
+    def __init__(self, frames):
+        self._frames = dict(frames)
+
+    def __getitem__(self, key):
+        return self._frames[key]
+
+    def __len__(self):
+        return len(self._frames)
+
+    @property
+    def empty(self):
+        return len(self._frames) == 0
+
+    def swapaxes(self, axis1, axis2):
+        if {axis1, axis2} != {'items', 'minor'}:
+            raise ValueError('AbuKLinePanel.swapaxes only supports items <-> minor')
+        return _AbuKLinePanelSwapped(self._frames)
+
+
+class _AbuKLinePanelSwapped(object):
+    """swapaxes('items', 'minor') 之后，用列名取出 日期 x symbol 的表。"""
+
+    def __init__(self, frames):
+        self._frames = frames
+
+    def __getitem__(self, column):
+        series = {}
+        for symbol, df in self._frames.items():
+            if column in getattr(df, 'columns', ()):
+                series[symbol] = df[column]
+        return pd.DataFrame(series)
+
+
 # noinspection PyDeprecation
 def make_kl_df(symbol, data_mode=ABuEnv.EMarketDataSplitMode.E_DATA_SPLIT_SE,
                n_folds=2, start=None, end=None, benchmark=None, show_progress=True, parallel=False, parallel_save=True):
@@ -297,8 +327,8 @@ def make_kl_df(symbol, data_mode=ABuEnv.EMarketDataSplitMode.E_DATA_SPLIT_SE,
                         panel[symbol[pos]] = _df
 
             _batch_make_kl_df()
-        # TODO pd.Panel过时
-        return pd.Panel(panel)
+        # pandas.Panel 已删除，返回支持 [symbol] 和 swapaxes('items', 'minor') 的面板
+        return AbuKLinePanel(panel)
 
     elif isinstance(symbol, Symbol) or isinstance(symbol, six.string_types):
         # 对单个symbol进行数据获取
